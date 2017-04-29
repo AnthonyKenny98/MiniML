@@ -58,17 +58,23 @@ let free_vars (exp : expr) : varidset =
   | Unop (_, e) -> vlst  e 
   | Binop (_, e1, e2) -> (vlst  e1) @ (vlst  e2)
   | Conditional (e1, e2, e3) -> (vlst  e1) @ (vlst  e2) @ (vlst  e3)
-  | Fun (v, e) -> v :: (vlst  e)
-  | Let (v, e1, e2) | Letrec (v, e1, e2) -> v :: (vlst  e1) @ (vlst  e2)
   | App (e1, e2) -> (vlst  e1) @ (vlst  e2)
+  | Fun (v, e) ->  List.filter (fun x -> not (x = v)) (vlst e)
+  | Let (v, e1, e2) | Letrec (v, e1, e2) -> (vlst  e1) @ (List.filter (fun x -> not (x = v)) (vlst  e2))
   | _ -> [] in
   SS.of_list (vlst exp)
 ;;
   
 (* Return a fresh variable, constructed with a running counter a la
     gensym. Assumes no variable names use the prefix "var". *)
+let gensymcnt = ref 0;; 
+
+let inc (i : int ref) : unit =
+  i := !i + 1;;
+
 let new_varname () : varid =
-  failwith "new_varname not implemented" ;;
+  let x = !gensymcnt in (inc gensymcnt);
+    string_of_int x ;;
   
 (* Substitute [repl] for free occurrences of [var_name] in [exp] *)
 let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
