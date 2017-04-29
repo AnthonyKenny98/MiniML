@@ -52,8 +52,18 @@ let same_vars = SS.equal;;
 let vars_of_list = SS.of_list ;;
   
 (* Return a set of the variable names free in [exp] *)
-let rec free_vars (exp : expr) : varidset =
-  failwith "free_vars not implemented" ;;
+let free_vars (exp : expr) : varidset =
+  let rec vlst exp : varid list = match exp with 
+  | Var v  -> [v]
+  | Unop (_, e) -> vlst  e 
+  | Binop (_, e1, e2) -> (vlst  e1) @ (vlst  e2)
+  | Conditional (e1, e2, e3) -> (vlst  e1) @ (vlst  e2) @ (vlst  e3)
+  | Fun (v, e) -> v :: (vlst  e)
+  | Let (v, e1, e2) | Letrec (v, e1, e2) -> v :: (vlst  e1) @ (vlst  e2)
+  | App (e1, e2) -> (vlst  e1) @ (vlst  e2)
+  | _ -> [] in
+  SS.of_list (vlst exp)
+;;
   
 (* Return a fresh variable, constructed with a running counter a la
     gensym. Assumes no variable names use the prefix "var". *)
@@ -73,19 +83,24 @@ let binop_to_string (b : binop) : string =
   | LessThan -> "LessThan"
 
 
-(* exp_to_string -- Returns a string representation of the expr *)
+(* exp_to_abstract_strin -- Returns a string representation of the expr *)
 let rec exp_to_string (exp : expr) : string =
-  failwith "exp_to_string not implemented" 
-  ;;
+  failwith "exp_to_string not implemented" ;;
 
 (* exp_to_abstract_string: Returns a string representation of the abstract
    syntax of the expr *)
 let rec exp_to_abstract_string (exp : expr) : string =
   match exp with 
-  | Var v  -> sprintf "Var %s" v
-  | Num i  -> sprintf "Num %s" (string_of_int i)
+  | Var v  -> sprintf "Var(%s)" v
+  | Num i  -> sprintf "Num(%s)" (string_of_int i)
   | Bool b -> if b then "true" else "false"
-  | Unop (u, e) ->  sprintf "(Unop (Negate, %s))" (exp_to_string e)
-  | Binop (b, e1, e2) -> sprintf "(Binop (%s, %s, %s))" (binop_to_string b) (exp_to_string e1) (exp_to_string e2)
-  | Conditional (e1, e2, e3) -> sprintf "(Conditional (%s, %s, %s)" (exp_to_string e1) (exp_to_string e2) (exp_to_string e3)
+  | Unop (u, e) ->  sprintf "Unop(Negate, %s)" (exp_to_abstract_string e)
+  | Binop (b, e1, e2) -> sprintf "Binop(%s, %s, %s)" (binop_to_string b) (exp_to_abstract_string e1) (exp_to_abstract_string e2)
+  | Conditional (e1, e2, e3) -> sprintf "Conditional(%s, %s, %s)" (exp_to_abstract_string e1) (exp_to_abstract_string e2) (exp_to_abstract_string e3)
+  | Fun (v, e) -> sprintf "Fun(%s, %s)" v (exp_to_abstract_string e)
+  | Let (v, e1, e2) -> sprintf "Let(%s, %s, %s)" v (exp_to_abstract_string e1) (exp_to_abstract_string e2)
+  | Letrec (v, e1, e2) -> sprintf "Letrec(%s, %s, %s))" v (exp_to_abstract_string e1) (exp_to_abstract_string e2)
+  | Raise -> "Raise" (* gotta fix *)
+  | Unassigned -> "Unassigned" (* gotta fix *)
+  | App (e1, e2) -> sprintf "App(%s, %s)" (exp_to_abstract_string e1) (exp_to_abstract_string e2)
   ;;
