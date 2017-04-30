@@ -8,6 +8,7 @@
 
 open Printf
 
+
 type unop =
   | Negate    
 ;;
@@ -55,7 +56,7 @@ let vars_of_list = SS.of_list ;;
 let free_vars (exp : expr) : varidset =
   let rec vlst exp : varid list = match exp with 
   | Var v  -> [v]
-  | Unop (_, e) -> vlst  e 
+  | Unop (_, e) -> vlst e 
   | Binop (_, e1, e2) -> (vlst  e1) @ (vlst  e2)
   | Conditional (e1, e2, e3) -> (vlst  e1) @ (vlst  e2) @ (vlst  e3)
   | App (e1, e2) -> (vlst  e1) @ (vlst  e2)
@@ -76,9 +77,34 @@ let new_varname () : varid =
   let x = !gensymcnt in (inc gensymcnt);
     string_of_int x ;;
   
+(* returns true if a var is the set of free_vars *)
+let is_free_var var exp: bool =
+  SS.exists (fun x -> x = var) (free_vars exp)
+;; 
+
+
 (* Substitute [repl] for free occurrences of [var_name] in [exp] *)
 let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
-  failwith "subst not implemented" ;;
+  let rec aux = subst var_name repl in  
+    match exp with 
+    | Var v -> if v = var_name then repl else exp
+    | Unop (n, e) -> Unop (n, aux e)
+    | Binop (b, e1, e2) -> Binop (b, aux e1, aux e2)
+    | Conditional (e1, e2, e3) -> Conditional (aux e1, aux e2, aux e3)
+    | App (e1, e2) -> App (aux e1, aux e2)
+    | Fun (v, e) -> if v = var_name then exp
+      else if is_free_var v repl 
+        then let new_var = new_varname() in 
+          Fun (new_var, aux (subst v (Var (new_var)) e))
+        else Fun (v, aux e)
+    | Let (v, e1, e2) -> if v = var_name then Let (v, aux e1, e2)
+        else if is_free_var v repl 
+          then let new_var = new_varname() in
+            Let (new_var, aux e1, aux (subst v (Var new_var) e2))
+          else Let (v, aux e1, aux e2)
+    | Letrec (_,_,_) -> Raise
+    | x -> x
+;;
 
 let binop_to_string (b : binop) : string =
   match b with 
@@ -99,7 +125,7 @@ let rec exp_to_abstract_string (exp : expr) : string =
   match exp with 
   | Var v  -> sprintf "Var(%s)" v
   | Num i  -> sprintf "Num(%s)" (string_of_int i)
-  | Bool b -> if b then "true" else "false"
+  | Bool b -> if b then "Bool(true)" else "Bool(false)"
   | Unop (u, e) ->  sprintf "Unop(Negate, %s)" (exp_to_abstract_string e)
   | Binop (b, e1, e2) -> sprintf "Binop(%s, %s, %s)" (binop_to_string b) (exp_to_abstract_string e1) (exp_to_abstract_string e2)
   | Conditional (e1, e2, e3) -> sprintf "Conditional(%s, %s, %s)" (exp_to_abstract_string e1) (exp_to_abstract_string e2) (exp_to_abstract_string e3)
