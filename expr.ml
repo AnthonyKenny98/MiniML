@@ -61,7 +61,8 @@ let free_vars (exp : expr) : varidset =
   | Conditional (e1, e2, e3) -> (vlst  e1) @ (vlst  e2) @ (vlst  e3)
   | App (e1, e2) -> (vlst  e1) @ (vlst  e2)
   | Fun (v, e) ->  List.filter (fun x -> not (x = v)) (vlst e)
-  | Let (v, e1, e2) | Letrec (v, e1, e2) -> (vlst  e1) @ (List.filter (fun x -> not (x = v)) (vlst  e2))
+  | Let (v, e1, e2) -> (vlst  e1) @ (List.filter (fun x -> not (x = v)) (vlst  e2))
+  | Letrec (v, e1, e2) -> (List.filter (fun x -> not (x = v)) (vlst  e1)) @ (List.filter (fun x -> not (x = v)) (vlst  e2))
   | _ -> [] in
   SS.of_list (vlst exp)
 ;;
@@ -131,7 +132,7 @@ let rec exp_to_abstract_string (exp : expr) : string =
   | Conditional (e1, e2, e3) -> sprintf "Conditional(%s, %s, %s)" (exp_to_abstract_string e1) (exp_to_abstract_string e2) (exp_to_abstract_string e3)
   | Fun (v, e) -> sprintf "Fun(%s, %s)" v (exp_to_abstract_string e)
   | Let (v, e1, e2) -> sprintf "Let(%s, %s, %s)" v (exp_to_abstract_string e1) (exp_to_abstract_string e2)
-  | Letrec (v, e1, e2) -> sprintf "Letrec(%s, %s, %s))" v (exp_to_abstract_string e1) (exp_to_abstract_string e2)
+  | Letrec (v, e1, e2) -> sprintf "Letrec(%s, %s, %s)" v (exp_to_abstract_string e1) (exp_to_abstract_string e2)
   | Raise -> "Raise" (* gotta fix *)
   | Unassigned -> "Unassigned" (* gotta fix *)
   | App (e1, e2) -> sprintf "App(%s, %s)" (exp_to_abstract_string e1) (exp_to_abstract_string e2)
