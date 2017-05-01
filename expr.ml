@@ -9,6 +9,7 @@
 open Printf
 
 
+
 type unop =
   | Negate    
 ;;
@@ -51,7 +52,60 @@ let same_vars = SS.equal;;
 (* Generate a set of variable names from a list of strings (for
     testing purposes) *)
 let vars_of_list = SS.of_list ;;
-  
+
+let binop_to_string (b : binop) : string =
+  match b with 
+  | Plus     -> "Plus" 
+  | Minus    -> "Minus" 
+  | Times    -> "Times" 
+  | Equals   -> "Equals"
+  | LessThan -> "LessThan"
+
+let binop_to_symbol (b : binop) : string =
+  match b with 
+  | Plus     -> "+" 
+  | Minus    -> "-" 
+  | Times    -> "*" 
+  | Equals   -> "="
+  | LessThan -> "<"
+
+
+
+(* module type ARG = 
+sig
+  type t
+  val equal : t -> t -> bool
+  val traverse : t -> 'a
+end 
+
+
+module BinopArg =
+struct
+  type t = binop
+
+  let equal b1 b2 = b1 = b2;;
+
+  let traverse b : string = 
+    match b with 
+    | Plus     -> "Plus" 
+    | Minus    -> "Minus" 
+    | Times    -> "Times" 
+    | Equals   -> "Equals"
+    | LessThan -> "LessThan"
+end 
+
+
+
+module ExprArg =
+struct
+  type t = expr
+
+  let equal e1 e2 = e1 = e2
+
+  let traverse e = 
+
+end *)
+
 (* Return a set of the variable names free in [exp] *)
 let free_vars (exp : expr) : varidset =
   let rec vlst exp : varid list = match exp with 
@@ -103,22 +157,26 @@ let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
           then let new_var = new_varname() in
             Let (new_var, aux e1, aux (subst v (Var new_var) e2))
           else Let (v, aux e1, aux e2)
-    | Letrec (_,_,_) -> Raise
+    | Letrec (v, e1, e2) -> subst v (subst v (Letrec(v, e1, Var(v))) e1) e2
     | x -> x
 ;;
 
-let binop_to_string (b : binop) : string =
-  match b with 
-  | Plus     -> "Plus" 
-  | Minus    -> "Minus" 
-  | Times    -> "Times" 
-  | Equals   -> "Equals"
-  | LessThan -> "LessThan"
-
-
 (* exp_to_abstract_strin -- Returns a string representation of the expr *)
 let rec exp_to_string (exp : expr) : string =
-  failwith "exp_to_string not implemented" ;;
+  match exp with
+  | Var v  -> v
+  | Num i  -> string_of_int i
+  | Bool b -> if b then "true" else "false"
+  | Unop (u, e) ->  sprintf "-%s" (exp_to_string e)
+  | Binop (b, e1, e2) -> sprintf "%s %s %s" (exp_to_string e1) (binop_to_symbol b) (exp_to_string e2)
+  | Conditional (e1, e2, e3) -> sprintf "if %s then %s else %s" (exp_to_string e1) (exp_to_string e2) (exp_to_string e3)
+  | Fun (v, e) -> sprintf "fun %s -> %s" v (exp_to_string e)
+  | Let (v, e1, e2) -> sprintf "let %s = %s in %s" v (exp_to_string e1) (exp_to_string e2)
+  | Letrec (v, e1, e2) -> sprintf "let rec %s = %s in %s" v (exp_to_string e1) (exp_to_string e2)
+  | Raise -> "Raise" (* gotta fix *)
+  | Unassigned -> "Unassigned" (* gotta fix *)
+  | App (e1, e2) -> sprintf "%s %s" (exp_to_string e1) (exp_to_string e2)
+;;
 
 (* exp_to_abstract_string: Returns a string representation of the abstract
    syntax of the expr *)

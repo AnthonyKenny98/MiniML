@@ -37,13 +37,13 @@ let repl () =
         (* read and parse an expression from the input *)
         let exp = MP.input ML.token lexbuf in
         (* evaluate it *)
-        let res = Ev.evaluate exp env in
+        let res = Ev.evaluate env exp in
         (* print the result *)
-        printf "==> %s\n" (Ex.exp_to_abstract_string res)
+        printf "==> %s\n" (Ex.exp_to_string res)
       with
       | Parsing.Parse_error -> printf "xx> parse error\n"
       | Ev.EvalError msg -> printf "xx> evaluation error: %s\n" msg
-      | Ev.EvalException -> printf "xx> evaluation exception\n"
+      | Ev.EvalException msg -> printf "xx> evaluation exception: %s\n" msg
       | End_of_file -> printf "Goodbye.\n"; exit 0
     );
     flush stdout
