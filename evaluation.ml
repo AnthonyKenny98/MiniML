@@ -51,7 +51,7 @@ module Env : Env_type =
     (* Looks up the value of a variable in the environment *)
     let rec lookup (env : env) (varname : varid) : value =
       match env with
-      | [] -> raise (EvalException ("Unbound Variable: " ^ varname))
+      | [] -> Val(Var(varname))
       | h :: t -> let var, valref = h in 
         if var = varname then !valref else lookup t varname;;
 
@@ -92,57 +92,63 @@ module Env : Env_type =
 let eval_t _env exp = exp ;;
 
 
-let rec binop_eval (op : binop) (e1 : expr) (e2 : expr) : expr =
-match e1, e2 with
-  | Num _, Num _ ->
-   (match op, e1, e2 with 
-    | Plus, Num x, Num y -> Num (x + y)
-    | Minus, Num x, Num y -> Num (x - y)
-    | Times, Num x, Num y-> Num (x * y)
-    | Equals, Num x, Num y-> Bool (x = y)
-    | LessThan, Num x, Num y -> Bool (x < y))
-  | _, _ -> raise (EvalException "Invalid Binop Expressions")
-;;
-let conditional_eval (condition : expr) (e1 : expr) (e2 :expr) : expr = 
-  match condition with 
-  | Bool b -> if b then e1 else e2 
-  | _ -> raise (EvalException "Invalid Condition")
-;;
+let eval_u (exp : expr) (eval : expr -> expr) = 
+  match exp with
+  | Num _ | Bool _ | Fun _ | Raise | Unassigned -> exp
+  | Unop (unop, e) -> Unop(unop, eval e)
+  | Binop (binop, e1, e2) -> 
+    (match (eval e1), (eval e2) with
+    | Num x, Num y -> 
+      (match binop with
+      | Plus     -> Num (x + y)
+      | Minus    -> Num (x - y)
+      | Times    -> Num (x * y)
+      | Equals   -> Bool (x = y)
+      | LessThan -> Bool (x < y))
+    | _,_ -> raise (EvalException ("Invalid Binop Expression: " ^ (exp_to_string (Binop(binop, (eval e1), (eval e2)))))))
+  | Conditional (condition, e1, e2) -> 
+      (match eval condition with 
+      | Bool b -> if b then (eval e1) else (eval e2) 
+      | _ -> raise (EvalException ("Invalid Condition: " ^ (exp_to_string condition))))
+
+
+
+
 
 let rec eval_s env exp : expr = 
   let eval = eval_s env in
   match exp with 
   | Var x -> raise (EvalException ("Unbound Variable: " ^ x))
   | Unop (n, e) -> Unop(n, eval e)
-  | Binop (b, e1, e2) -> binop_eval b (eval e1) (eval e2)
-  | Conditional (e1, e2, e3) -> 
-            (match eval e1 with 
-              | Bool b -> if b then (eval e2) else (eval e3) 
-              | _ -> raise (EvalException "Invalid Condition"))
-  | Let (v, e1, e2) -> eval (subst v e1 e2) (* NOT SURE - NEEDS THOUROUGH TESTING *)
+  | Binop _ -> eval_u exp eval
+  | Conditional (e1, e2, e3) -> eval_u exp eval
+  | Let (v, e1, e2) -> eval (subst v e1 e2)
   | Letrec (x, v, p) -> eval (subst x (subst x (Letrec(x, v, Var(x))) v) p)
   | App (f, e2) -> 
     (match eval f with
     | Fun (x, p) -> eval (subst x e2 p) 
-    | _ -> raise (EvalException "wrong app")) 
+    | _ -> raise (EvalException (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
   | x -> x
 ;;
 
 
-let eval_d env exp =
+let rec eval_d env exp =
 match exp with 
-  | Var x -> Env.lookup env x
-  | Unop (n, e) -> Unop(n, eval e)
-  | Binop (b, e1, e2) -> binop_eval b (eval e1) (eval e2)
-  | Conditional (e1, e2, e3) -> conditional_eval (eval e1) (eval e2) (eval e3)
-  | Let (v, e1, e2) -> eval (subst v e1 e2) (* NOT SURE - NEEDS THOUROUGH TESTING *)
-  | Letrec (v, e1, e2) -> raise (EvalException ("Not yet implemented"))
-  | App (f, e2) -> 
+  | Var x -> (match Env.lookup env x with 
+            | Val y | Closure (y, _) -> y)
+(*   | Unop (n, e) -> Unop(n, eval_d env e)
+  | Binop _ -> eval_u exp (eval_d env)
+  | Conditional _ -> eval_u exp (eval_d env) *)
+              
+  | Let (v, e1, e2) -> eval_d (Env.extend env v (ref (Env.Val(eval_d env e1)))) e2
+  | Letrec (v, e1, e2) -> eval_d (Env.extend env v (ref (Env.Val(eval_d (Env.extend env v (ref (Env.Val(Unassigned)))) e1)))) e2
+  | App (f, v) -> 
     (match eval_d env f with
-    | Fun (x, p) -> 
+    | Fun (x, e) -> eval_d (Env.extend env x (ref (Env.Val(eval_d env v)))) e
     | _ -> raise (EvalException "application of non function")) 
-  | x -> x 
+  | _ -> eval_u exp (eval_d env)
 ;;
+
 
 
 
