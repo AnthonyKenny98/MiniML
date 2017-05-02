@@ -8,8 +8,6 @@
 
 open Printf
 
-
-
 type unop =
   | Negate    
 ;;
@@ -68,7 +66,6 @@ let binop_to_symbol (b : binop) : string =
   | Times    -> "*" 
   | Equals   -> "="
   | LessThan -> "<"
-
 
 
 (* module type ARG = 
@@ -146,7 +143,10 @@ let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
     | Unop (n, e) -> Unop (n, aux e)
     | Binop (b, e1, e2) -> Binop (b, aux e1, aux e2)
     | Conditional (e1, e2, e3) -> Conditional (aux e1, aux e2, aux e3)
-    | App (e1, e2) -> App (aux e1, aux e2)
+    | App (e1, e2) -> 
+        (match e1 with
+        | Fun (v, e) -> subst v (aux e2) (aux e)
+        | _ -> App (aux e1, aux e2))
     | Fun (v, e) -> if v = var_name then exp
       else if is_free_var v repl 
         then let new_var = new_varname() in 
@@ -157,7 +157,11 @@ let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
           then let new_var = new_varname() in
             Let (new_var, aux e1, aux (subst v (Var new_var) e2))
           else Let (v, aux e1, aux e2)
-    | Letrec (v, e1, e2) -> subst v (subst v (Letrec(v, e1, Var(v))) e1) e2
+    | Letrec (v, e1, e2) -> if v = var_name then Letrec (v, aux e1, e2)
+        else if is_free_var v repl 
+          then let new_var = new_varname() in
+            (Letrec (new_var, aux e1, aux (subst v (Var new_var) e2)))
+          else (Letrec (v, aux e1, aux e2))
     | x -> x
 ;;
 
@@ -168,7 +172,7 @@ let rec exp_to_string (exp : expr) : string =
   | Num i  -> string_of_int i
   | Bool b -> if b then "true" else "false"
   | Unop (u, e) ->  sprintf "-%s" (exp_to_string e)
-  | Binop (b, e1, e2) -> sprintf "%s %s %s" (exp_to_string e1) (binop_to_symbol b) (exp_to_string e2)
+  | Binop (b, e1, e2) -> sprintf "(%s %s %s)" (exp_to_string e1) (binop_to_symbol b) (exp_to_string e2)
   | Conditional (e1, e2, e3) -> sprintf "if %s then %s else %s" (exp_to_string e1) (exp_to_string e2) (exp_to_string e3)
   | Fun (v, e) -> sprintf "fun %s -> %s" v (exp_to_string e)
   | Let (v, e1, e2) -> sprintf "let %s = %s in %s" v (exp_to_string e1) (exp_to_string e2)
