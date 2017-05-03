@@ -96,11 +96,11 @@ module Env : Env_type =
 
 let exprs = Env.value_to_expr;;
 
-let eval_x ?(subst = false) (env : Env.env) (exp : expr) (eval : Env.env -> expr -> Env.value)  = 
+let eval_x ?(subst = false) (exp : expr) (env : Env.env) (eval : expr -> Env.env -> Env.value)  = 
   match exp with
-  | Unop (unop, e) -> Env.Val(Unop(unop, (exprs (eval env e))))
+  | Unop (unop, e) -> Env.Val(Unop(unop, (exprs (eval e env))))
   | Binop (binop, e1, e2) -> 
-    (match (exprs (eval env e1)), (exprs(eval env e2)) with
+    (match (exprs (eval e1 env)), (exprs(eval e2 env)) with
     | Num x, Num y -> 
       (match binop with
       | Plus     -> Env.Val(Num (x + y))
@@ -109,25 +109,25 @@ let eval_x ?(subst = false) (env : Env.env) (exp : expr) (eval : Env.env -> expr
       | Equals   -> Env.Val(Bool (x = y))
       | LessThan -> Env.Val(Bool (x < y)))
     | _,_ -> raise (EvalError ("Invalid Binop Expression: " ^ 
-            (exp_to_string (Binop(binop, exprs (eval env e1), exprs (eval env e2)))))))
+            (exp_to_string (Binop(binop, exprs (eval e1 env), exprs (eval e2 env)))))))
   | Conditional (condition, e1, e2) -> 
-      (match exprs (eval env condition) with 
-      | Bool b -> if b then (eval env e1) else (eval env e2) 
+      (match exprs (eval condition env) with 
+      | Bool b -> if b then (eval e1 env) else (eval e2 env) 
       | _ -> raise (EvalError ("Invalid Condition: " ^ (exp_to_string condition)))) 
   | _ -> if subst then Env.Val(exp) else (match exp with 
 
   | Var x -> (match Env.lookup env x with 
             | Val y | Closure (y, _) -> Env.Val(y))  
-  | Let (v, e1, e2) -> eval (Env.extend env v (ref (eval env e1))) e2
-  | Letrec (v, e1, e2) -> eval (Env.extend env v (ref (eval (Env.extend env v (ref (Env.Val(Unassigned)))) e1))) e2
-  | App _ -> eval env exp
+  | Let (v, e1, e2) -> eval e2 (Env.extend env v (ref (eval e1 env)))
+  | Letrec (v, e1, e2) -> eval e2 (Env.extend env v (ref (eval e1 (Env.extend env v (ref (Env.Val(Unassigned)))))))
+  | App _ -> eval exp env
   | Num _ | Unassigned | Raise | Bool _ -> Env.Val(exp)
-  | _ -> eval env exp)
+  | _ -> eval exp env)
 
-let eval_t _env exp = exp ;;
+let eval_t exp _env = exp ;;
 
-let rec eval_s env exp : Env.value = 
-  let eval_s' = eval_s env in
+let rec eval_s exp env : Env.value = 
+  let eval_s' e = eval_s e env in
   match exp with 
   | Var x -> raise (EvalError ("Unbound Variable: " ^ x))
   | Let (v, e1, e2) -> eval_s' (subst v e1 e2)
@@ -136,27 +136,27 @@ let rec eval_s env exp : Env.value =
     (match exprs (eval_s' f) with
     | Fun (x, p) -> eval_s' (subst x e2 p) 
     | _ -> raise (EvalError (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
-  | _ -> eval_x env exp eval_s ~subst:true
+  | _ -> eval_x exp env eval_s ~subst:true
 
 
-let rec eval_d env exp : Env.value =
+let rec eval_d exp env : Env.value =
 match exp with 
   | App (f, v) -> 
-    (match exprs (eval_d env f) with
-    | Fun (x, e) -> eval_d (Env.extend env x (ref (eval_d env v))) e
+    (match exprs (eval_d f env) with
+    | Fun (x, e) -> eval_d e (Env.extend env x (ref (eval_d v env)))
     | _ -> raise (EvalError (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
   | Fun (_) -> Val(exp)
-  | _ -> eval_x env exp eval_d
+  | _ -> eval_x exp env eval_d
 ;;
 
-let rec eval_l env exp : Env.value = 
+let rec eval_l exp env : Env.value = 
 match exp with 
   | App (f, _) -> 
-    (match (eval_l env f) with
-    | Env.Closure (Fun (_, e), env1) -> eval_l env1 e
+    (match (eval_l f env) with
+    | Env.Closure (Fun (_, e), env1) -> eval_l e env1
     | _ -> raise (EvalError (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
   | Fun (_) -> Env.close exp env 
-  | _ -> eval_x env exp eval_d
+  | _ -> eval_x exp env eval_d
 ;;
 
 
