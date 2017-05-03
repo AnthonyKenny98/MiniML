@@ -43,7 +43,7 @@ let repl () =
       with
       | Parsing.Parse_error -> printf "xx> parse error\n"
       | Ev.EvalError msg -> printf "xx> evaluation error: %s\n" msg
-      | Ev.EvalException msg -> printf "xx> evaluation exception: %s\n" msg
+      | Ev.EvalException -> printf "xx> evaluation exception:\n"
       | End_of_file -> printf "Goodbye.\n"; exit 0
     );
     flush stdout
