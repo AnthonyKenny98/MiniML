@@ -68,19 +68,24 @@ let binop_to_symbol (b : binop) : string =
   | LessThan -> "<"
 
 (* Return a set of the variable names free in [exp] *)
-let rec free_vars (exp : expr) : varidset =
+let rec free_vars (exp : expr)  : varidset =
+ let filtervars exp v = SS.filter (fun x -> not (x = v)) (free_vars exp) in 
  match exp with 
   | Var v  -> SS.singleton v
   | Unop (_, e) -> free_vars e 
-  | Binop (_, e1, e2) -> SS.union (free_vars  e1) (free_vars  e2)
+  | Binop (_, e1, e2) | App (e1, e2) -> SS.union (free_vars  e1) (free_vars  e2)
   | Conditional (e1, e2, e3) -> SS.union (free_vars  e1) (SS.union (free_vars e2) (free_vars  e3))
-  | App (e1, e2) -> SS.union (free_vars e1) (free_vars e2)
-  | Fun (v, e) ->  SS.filter (fun x -> not (x = v)) (free_vars e)
-  | Let (v, e1, e2) -> SS.union (free_vars  e1) (SS.filter (fun x -> not (x = v)) (free_vars  e2))
-  | Letrec (v, e1, e2) -> SS.union (SS.filter (fun x -> not (x = v)) (free_vars  e1)) (SS.filter (fun x -> not (x = v)) (free_vars  e2))
+  | Fun (v, e) ->  filtervars e v
+  | Let (v, e1, e2) -> SS.union (free_vars e1) (filtervars e2 v)
+  | Letrec (v, e1, e2) -> SS.union (filtervars e1 v) (filtervars e2 v)
   | _ -> SS.empty 
 ;;
   
+(* returns true if a var is the set of free_vars *)
+let is_free_var var exp: bool =
+  SS.exists (fun x -> x = var) (free_vars exp)
+;; 
+
 (* Return a fresh variable, constructed with a running counter a la
     gensym. Assumes no variable names use the prefix "var". *)
 let gensymcnt = ref 0;; 
@@ -91,11 +96,6 @@ let inc (i : int ref) : unit =
 let new_varname () : varid =
   let x = !gensymcnt in (inc gensymcnt);
     string_of_int x ;;
-  
-(* returns true if a var is the set of free_vars *)
-let is_free_var var exp: bool =
-  SS.exists (fun x -> x = var) (free_vars exp)
-;; 
 
 
 (* Substitute [repl] for free occurrences of [var_name] in [exp] *)
