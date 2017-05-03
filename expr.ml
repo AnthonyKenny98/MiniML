@@ -67,55 +67,18 @@ let binop_to_symbol (b : binop) : string =
   | Equals   -> "="
   | LessThan -> "<"
 
-
-(* module type ARG = 
-sig
-  type t
-  val equal : t -> t -> bool
-  val traverse : t -> 'a
-end 
-
-
-module BinopArg =
-struct
-  type t = binop
-
-  let equal b1 b2 = b1 = b2;;
-
-  let traverse b : string = 
-    match b with 
-    | Plus     -> "Plus" 
-    | Minus    -> "Minus" 
-    | Times    -> "Times" 
-    | Equals   -> "Equals"
-    | LessThan -> "LessThan"
-end 
-
-
-
-module ExprArg =
-struct
-  type t = expr
-
-  let equal e1 e2 = e1 = e2
-
-  let traverse e = 
-
-end *)
-
 (* Return a set of the variable names free in [exp] *)
-let free_vars (exp : expr) : varidset =
-  let rec vlst exp : varid list = match exp with 
-  | Var v  -> [v]
-  | Unop (_, e) -> vlst e 
-  | Binop (_, e1, e2) -> (vlst  e1) @ (vlst  e2)
-  | Conditional (e1, e2, e3) -> (vlst  e1) @ (vlst  e2) @ (vlst  e3)
-  | App (e1, e2) -> (vlst  e1) @ (vlst  e2)
-  | Fun (v, e) ->  List.filter (fun x -> not (x = v)) (vlst e)
-  | Let (v, e1, e2) -> (vlst  e1) @ (List.filter (fun x -> not (x = v)) (vlst  e2))
-  | Letrec (v, e1, e2) -> (List.filter (fun x -> not (x = v)) (vlst  e1)) @ (List.filter (fun x -> not (x = v)) (vlst  e2))
-  | _ -> [] in
-  SS.of_list (vlst exp)
+let rec free_vars (exp : expr) : varidset =
+ match exp with 
+  | Var v  -> SS.singleton v
+  | Unop (_, e) -> free_vars e 
+  | Binop (_, e1, e2) -> SS.union (free_vars  e1) (free_vars  e2)
+  | Conditional (e1, e2, e3) -> SS.union (free_vars  e1) (SS.union (free_vars e2) (free_vars  e3))
+  | App (e1, e2) -> SS.union (free_vars e1) (free_vars e2)
+  | Fun (v, e) ->  SS.filter (fun x -> not (x = v)) (free_vars e)
+  | Let (v, e1, e2) -> SS.union (free_vars  e1) (SS.filter (fun x -> not (x = v)) (free_vars  e2))
+  | Letrec (v, e1, e2) -> SS.union (SS.filter (fun x -> not (x = v)) (free_vars  e1)) (SS.filter (fun x -> not (x = v)) (free_vars  e2))
+  | _ -> SS.empty 
 ;;
   
 (* Return a fresh variable, constructed with a running counter a la
@@ -137,7 +100,7 @@ let is_free_var var exp: bool =
 
 (* Substitute [repl] for free occurrences of [var_name] in [exp] *)
 let rec subst (var_name : varid) (repl : expr) (exp : expr) : expr =
-  let rec aux = subst var_name repl in  
+  let aux = subst var_name repl in  
     match exp with 
     | Var v -> if v = var_name then repl else exp
     | Unop (n, e) -> Unop (n, aux e)
@@ -171,7 +134,7 @@ let rec exp_to_string (exp : expr) : string =
   | Var v  -> v
   | Num i  -> string_of_int i
   | Bool b -> if b then "true" else "false"
-  | Unop (u, e) ->  sprintf "-%s" (exp_to_string e)
+  | Unop (_, e) ->  sprintf "-%s" (exp_to_string e)
   | Binop (b, e1, e2) -> sprintf "(%s %s %s)" (exp_to_string e1) (binop_to_symbol b) (exp_to_string e2)
   | Conditional (e1, e2, e3) -> sprintf "if %s then %s else %s" (exp_to_string e1) (exp_to_string e2) (exp_to_string e3)
   | Fun (v, e) -> sprintf "fun %s -> %s" v (exp_to_string e)
@@ -189,7 +152,7 @@ let rec exp_to_abstract_string (exp : expr) : string =
   | Var v  -> sprintf "Var(%s)" v
   | Num i  -> sprintf "Num(%s)" (string_of_int i)
   | Bool b -> if b then "Bool(true)" else "Bool(false)"
-  | Unop (u, e) ->  sprintf "Unop(Negate, %s)" (exp_to_abstract_string e)
+  | Unop (_, e) ->  sprintf "Unop(Negate, %s)" (exp_to_abstract_string e)
   | Binop (b, e1, e2) -> sprintf "Binop(%s, %s, %s)" (binop_to_string b) (exp_to_abstract_string e1) (exp_to_abstract_string e2)
   | Conditional (e1, e2, e3) -> sprintf "Conditional(%s, %s, %s)" (exp_to_abstract_string e1) (exp_to_abstract_string e2) (exp_to_abstract_string e3)
   | Fun (v, e) -> sprintf "Fun(%s, %s)" v (exp_to_abstract_string e)

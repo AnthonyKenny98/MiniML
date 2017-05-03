@@ -30,6 +30,7 @@ module type Env_type = sig
     val extend : env -> varid -> value ref -> env
     val env_to_string : env -> string
     val value_to_string : ?printenvp:bool -> value -> string
+    val value_to_expr : value -> expr
   end
 
 module Env : Env_type =
@@ -44,14 +45,14 @@ module Env : Env_type =
 
     (* Creates a closure from an expression and the environment it's
        defined in *)
-    let rec close (exp : expr) (env : env) : value =
+    let close (exp : expr) (env : env) : value =
       Closure(exp, env)
    ;;
 
     (* Looks up the value of a variable in the environment *)
     let rec lookup (env : env) (varname : varid) : value =
       match env with
-      | [] -> Val(Var(varname))
+      | [] -> raise (EvalException ("Unbound Variable: " ^ varname))
       | h :: t -> let var, valref = h in 
         if var = varname then !valref else lookup t varname;;
 
@@ -68,13 +69,17 @@ module Env : Env_type =
       | Val exp -> sprintf "Val (%s)" (exp_to_string exp)
       | Closure (exp, env) -> 
           let envp = if printenvp then 
-            List.fold_left (fun a (var, varref) -> sprintf "(%s : %s)" var (value_to_string !varref)) "" env
+            List.fold_left (fun _ (var, varref) -> sprintf "(%s : %s)" var (value_to_string !varref)) "" env
             else "env" in
             sprintf "Closure (%s %s)" (exp_to_string exp) envp;;
 
    (* Returns a printable string representation of an environment *)
    let env_to_string (env : env) : string =
-      List.fold_left (fun a (var, varref) -> sprintf "(%s : %s)" var (value_to_string !varref)) "" env;;
+      List.fold_left (fun _ (var, varref) -> sprintf "(%s : %s)" var (value_to_string !varref)) "" env;;
+
+   let value_to_expr (value : value) : expr = 
+    match value with 
+    | Val expr | Closure (expr, _)->  expr;;
 
   end
 ;;
@@ -89,70 +94,71 @@ module Env : Env_type =
     the substitution model version or the dynamic or lexical
     environment model version. *)
 
-let eval_t _env exp = exp ;;
+let exprs = Env.value_to_expr;;
 
-
-let eval_u (exp : expr) (eval : expr -> expr) = 
+let eval_x ?(subst = false) (env : Env.env) (exp : expr) (eval : Env.env -> expr -> Env.value)  = 
   match exp with
-  | Num _ | Bool _ | Fun _ | Raise | Unassigned -> exp
-  | Unop (unop, e) -> Unop(unop, eval e)
+  | Unop (unop, e) -> Env.Val(Unop(unop, (exprs (eval env e))))
   | Binop (binop, e1, e2) -> 
-    (match (eval e1), (eval e2) with
+    (match (exprs (eval env e1)), (exprs(eval env e2)) with
     | Num x, Num y -> 
       (match binop with
-      | Plus     -> Num (x + y)
-      | Minus    -> Num (x - y)
-      | Times    -> Num (x * y)
-      | Equals   -> Bool (x = y)
-      | LessThan -> Bool (x < y))
-    | _,_ -> raise (EvalException ("Invalid Binop Expression: " ^ (exp_to_string (Binop(binop, (eval e1), (eval e2)))))))
+      | Plus     -> Env.Val(Num (x + y))
+      | Minus    -> Env.Val(Num (x - y))
+      | Times    -> Env.Val(Num (x * y))
+      | Equals   -> Env.Val(Bool (x = y))
+      | LessThan -> Env.Val(Bool (x < y)))
+    | _,_ -> raise (EvalException ("Invalid Binop Expression: " ^ 
+            (exp_to_string (Binop(binop, exprs (eval env e1), exprs (eval env e2)))))))
   | Conditional (condition, e1, e2) -> 
-      (match eval condition with 
-      | Bool b -> if b then (eval e1) else (eval e2) 
-      | _ -> raise (EvalException ("Invalid Condition: " ^ (exp_to_string condition))))
+      (match exprs (eval env condition) with 
+      | Bool b -> if b then (eval env e1) else (eval env e2) 
+      | _ -> raise (EvalException ("Invalid Condition: " ^ (exp_to_string condition)))) 
+  | _ -> if subst then Env.Val(exp) else (match exp with 
 
+  | Var x -> (match Env.lookup env x with 
+            | Val y | Closure (y, _) -> Env.Val(y))  
+  | Let (v, e1, e2) -> eval (Env.extend env v (ref (eval env e1))) e2
+  | Letrec (v, e1, e2) -> eval (Env.extend env v (ref (eval (Env.extend env v (ref (Env.Val(Unassigned)))) e1))) e2
+  | App _ -> eval env exp
+  | Num _ | Unassigned | Raise | Bool _ -> Env.Val(exp)
+  | _ -> eval env exp)
 
+let eval_t _env exp = exp ;;
 
-
-
-let rec eval_s env exp : expr = 
-  let eval = eval_s env in
+let rec eval_s env exp : Env.value = 
+  let eval_s' = eval_s env in
   match exp with 
   | Var x -> raise (EvalException ("Unbound Variable: " ^ x))
-  | Unop (n, e) -> Unop(n, eval e)
-  | Binop _ -> eval_u exp eval
-  | Conditional (e1, e2, e3) -> eval_u exp eval
-  | Let (v, e1, e2) -> eval (subst v e1 e2)
-  | Letrec (x, v, p) -> eval (subst x (subst x (Letrec(x, v, Var(x))) v) p)
+  | Let (v, e1, e2) -> eval_s' (subst v e1 e2)
+  | Letrec (x, v, p) -> eval_s' (subst x (subst x (Letrec(x, v, Var(x))) v) p)
   | App (f, e2) -> 
-    (match eval f with
-    | Fun (x, p) -> eval (subst x e2 p) 
+    (match exprs (eval_s' f) with
+    | Fun (x, p) -> eval_s' (subst x e2 p) 
     | _ -> raise (EvalException (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
-  | x -> x
-;;
+  | _ -> eval_x env exp eval_s ~subst:true
 
 
-let rec eval_d env exp =
+let rec eval_d env exp : Env.value =
 match exp with 
-  | Var x -> (match Env.lookup env x with 
-            | Val y | Closure (y, _) -> y)
-(*   | Unop (n, e) -> Unop(n, eval_d env e)
-  | Binop _ -> eval_u exp (eval_d env)
-  | Conditional _ -> eval_u exp (eval_d env) *)
-              
-  | Let (v, e1, e2) -> eval_d (Env.extend env v (ref (Env.Val(eval_d env e1)))) e2
-  | Letrec (v, e1, e2) -> eval_d (Env.extend env v (ref (Env.Val(eval_d (Env.extend env v (ref (Env.Val(Unassigned)))) e1)))) e2
   | App (f, v) -> 
-    (match eval_d env f with
-    | Fun (x, e) -> eval_d (Env.extend env x (ref (Env.Val(eval_d env v)))) e
-    | _ -> raise (EvalException "application of non function")) 
-  | _ -> eval_u exp (eval_d env)
+    (match exprs (eval_d env f) with
+    | Fun (x, e) -> eval_d (Env.extend env x (ref (eval_d env v))) e
+    | _ -> raise (EvalException (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
+  | Fun (_) -> Val(exp)
+  | _ -> eval_x env exp eval_d
+;;
+
+let rec eval_l env exp : Env.value = 
+match exp with 
+  | App (f, _) -> 
+    (match (eval_l env f) with
+    | Env.Closure (Fun (_, e), env1) -> eval_l env1 e
+    | _ -> raise (EvalException (sprintf "This cannot be applied: %s is not a function" (exp_to_string f))))
+  | Fun (_) -> Env.close exp env 
+  | _ -> eval_x env exp eval_d
 ;;
 
 
 
-
-
-let eval_l _ = failwith "eval_l not implemented" ;;
-
-let evaluate = eval_d ;;
+let evaluate = eval_l ;;
