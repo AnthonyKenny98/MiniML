@@ -1,6 +1,11 @@
 
-##project
+##MiniML
 -----
+
+*CS51 Spring 2017*
+_Final Project_
+
+
 Before you start working, add the extra remote repository for project. To do so, run:
 
 `git remote add distribution git@github.com:cs51/project.git`
